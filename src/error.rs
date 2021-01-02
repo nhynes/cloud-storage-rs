@@ -5,8 +5,8 @@ pub enum Error {
     Google(GoogleErrorResponse),
     /// If another network error causes something to fail, this variant is used.
     Reqwest(reqwest::Error),
-    /// If we encouter a SSL error, for example an invalid certificate, this variant is used.
-    Ssl(openssl::error::ErrorStack),
+    /// If the service account private key wasn't valid.
+    KeyRejected(ring::error::KeyRejected),
     /// If we have problems creating or parsing a json web token, this variant is used.
     Jwt(jsonwebtoken::errors::Error),
     /// If we cannot deserialize one of the repsonses sent by Google, this variant is used.
@@ -32,7 +32,7 @@ impl std::error::Error for Error {
         match self {
             Self::Google(e) => Some(e),
             Self::Reqwest(e) => Some(e),
-            Self::Ssl(e) => Some(e),
+            Self::KeyRejected(e) => Some(e),
             Self::Jwt(e) => Some(e),
             Self::Serialization(e) => Some(e),
             Self::Other(_) => None,
@@ -46,9 +46,9 @@ impl From<reqwest::Error> for Error {
     }
 }
 
-impl From<openssl::error::ErrorStack> for Error {
-    fn from(err: openssl::error::ErrorStack) -> Self {
-        Self::Ssl(err)
+impl From<ring::error::KeyRejected> for Error {
+    fn from(err: ring::error::KeyRejected) -> Self {
+        Self::KeyRejected(err)
     }
 }
 

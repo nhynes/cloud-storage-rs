@@ -966,8 +966,6 @@ impl Object {
         content_disposition: Option<String>,
         custom_metadata: &HashMap<String, String>,
     ) -> crate::Result<String> {
-        use openssl::sha;
-
         if duration > 604800 {
             let msg = format!(
                 "duration may not be greater than 604800, but was {}",
@@ -1012,7 +1010,7 @@ impl Object {
         );
 
         // 2 get hex encoded SHA256 hash the canonical request
-        let hash = sha::sha256(canonical_request.as_bytes());
+        let hash = ring::digest::digest(&ring::digest::SHA256, canonical_request.as_bytes());
         let hex_hash = hex::encode(hash);
 
         // 3 construct the string to sign
@@ -1114,12 +1112,15 @@ impl Object {
 
     #[inline(always)]
     fn sign_str(message: &str) -> Result<Vec<u8>, Error> {
-        use openssl::{hash::MessageDigest, pkey::PKey, sign::Signer};
+        use ring::signature::{RsaKeyPair, RSA_PKCS1_SHA256};
+        // use openssl::{hash::MessageDigest, pkey::PKey, sign::Signer};
 
-        let key = PKey::private_key_from_pem(crate::SERVICE_ACCOUNT.private_key.as_bytes())?;
-        let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
-        signer.update(message.as_bytes())?;
-        Ok(signer.sign_to_vec()?)
+        let key = RsaKeyPair::from_pkcs8(crate::SERVICE_ACCOUNT.private_key.as_bytes())?;
+        let rng = ring::rand::SystemRandom::new();
+        let mut signature = vec![0; key.public_modulus_len()];
+        key.sign(&RSA_PKCS1_SHA256, &rng, message.as_bytes(), &mut signature)
+            .map_err(|_| Error::Other("couldn't request".into()))?;
+        Ok(signature)
     }
 }
 
