@@ -3,6 +3,7 @@ use crate::{
     error::{Error, GoogleResponse},
     resources::object_access_control::ObjectAccessControl,
 };
+use bytes::Bytes;
 use futures::{stream, Stream, TryStream};
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use std::collections::HashMap;
@@ -573,8 +574,8 @@ impl Object {
     pub async fn download_streamed(
         bucket: &str,
         file_name: &str,
-    ) -> crate::Result<impl Stream<Item = crate::Result<u8>> + Unpin> {
-        use futures::{StreamExt, TryStreamExt};
+    ) -> crate::Result<impl Stream<Item = crate::Result<Bytes>> + Unpin> {
+        use futures::TryStreamExt;
         let url = format!(
             "{}/b/{}/o/{}?alt=media",
             crate::BASE_URL,
@@ -588,10 +589,7 @@ impl Object {
             .await?
             .error_for_status()?;
         let size = response.content_length();
-        let bytes = response
-            .bytes_stream()
-            .map(|chunk| chunk.map(|c| futures::stream::iter(c.into_iter().map(Ok))))
-            .try_flatten();
+        let bytes = response.bytes_stream().map_err(Into::into);
         Ok(SizedByteStream::new(bytes, size))
     }
 
@@ -1690,19 +1688,19 @@ mod tests {
 }
 
 /// A wrapper around a downloaded object's byte stream that provides a useful `size_hint`.
-pub struct SizedByteStream<S: Stream<Item = crate::Result<u8>> + Unpin> {
+pub struct SizedByteStream<S: Stream<Item = crate::Result<Bytes>> + Unpin> {
     size: Option<u64>,
     bytes: S,
 }
 
-impl<S: Stream<Item = crate::Result<u8>> + Unpin> SizedByteStream<S> {
+impl<S: Stream<Item = crate::Result<Bytes>> + Unpin> SizedByteStream<S> {
     fn new(bytes: S, size: Option<u64>) -> Self {
         Self { bytes, size }
     }
 }
 
-impl<S: Stream<Item = crate::Result<u8>> + Unpin> Stream for SizedByteStream<S> {
-    type Item = crate::Result<u8>;
+impl<S: Stream<Item = crate::Result<Bytes>> + Unpin> Stream for SizedByteStream<S> {
+    type Item = crate::Result<Bytes>;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
